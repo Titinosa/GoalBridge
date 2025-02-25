@@ -1,8 +1,18 @@
 import { User, Skill, CareerGoal, InsertUser } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
+import { scrypt, randomBytes } from "crypto";
+import { promisify } from "util";
 
 const MemoryStore = createMemoryStore(session);
+const scryptAsync = promisify(scrypt);
+
+// Helper to create a proper password hash in the same format as auth.ts
+async function createPasswordHash(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${buf.toString("hex")}.${salt}`;
+}
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -39,11 +49,19 @@ export class MemStorage implements IStorage {
       checkPeriod: 86400000,
     });
 
+    // Initialize demo data
+    this.initializeDemoData();
+  }
+
+  private async initializeDemoData() {
+    // Create a proper password hash for the demo user
+    const passwordHash = await createPasswordHash("demo123");
+
     // Add a demo user with some initial data
     const demoUser: User = {
       id: 1,
       username: "demo",
-      password: "$2b$10$demopasswordhash", // This is just a mock hash
+      password: passwordHash,
       fullName: "Demo User",
       currentPosition: "Software Developer",
       bio: "Passionate about learning and growing in tech",
