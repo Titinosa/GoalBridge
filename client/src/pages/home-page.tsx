@@ -21,15 +21,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Trash2, LogOut } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, Trash2, LogOut, Edit } from "lucide-react";
 import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [newSkill, setNewSkill] = useState({ name: "", progress: 0, level: 1 });
   const [newGoal, setNewGoal] = useState({ title: "", description: "" });
+  const [editingProject, setEditingProject] = useState<{
+    id: number;
+    context: string;
+  } | null>(null);
 
   const { data: skills = [] } = useQuery({
     queryKey: ["/api/skills"],
@@ -37,6 +42,10 @@ export default function HomePage() {
 
   const { data: goals = [] } = useQuery({
     queryKey: ["/api/goals"],
+  });
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ["/api/projects"],
   });
 
   const addSkillMutation = useMutation({
@@ -92,6 +101,38 @@ export default function HomePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
+    },
+  });
+
+  const updateProjectContextMutation = useMutation({
+    mutationFn: async ({ id, context }: { id: number; context: string }) => {
+      const res = await apiRequest("PATCH", `/api/projects/${id}/context`, { context });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setEditingProject(null);
+    },
+  });
+
+  const updateProjectTaskMutation = useMutation({
+    mutationFn: async ({
+      projectId,
+      taskId,
+      completed,
+    }: {
+      projectId: number;
+      taskId: number;
+      completed: boolean;
+    }) => {
+      const res = await apiRequest("PATCH", `/api/projects/${projectId}/tasks/${taskId}`, {
+        completed,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/skills"] });
     },
   });
 
@@ -219,7 +260,7 @@ export default function HomePage() {
                     <DialogHeader>
                       <DialogTitle>Add New Career Goal</DialogTitle>
                       <DialogDescription>
-                        Define a new career goal and get AI-generated tasks
+                        Define a new career goal and get AI-generated project roadmap
                       </DialogDescription>
                     </DialogHeader>
                     <form
@@ -276,23 +317,111 @@ export default function HomePage() {
                       </div>
                       <CardDescription>{goal.description}</CardDescription>
                     </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            </section>
+
+            <Separator />
+
+            <section>
+              <h2 className="text-xl font-semibold mb-4">Projects</h2>
+              <div className="space-y-4">
+                {projects.map((project) => (
+                  <Card key={project.id}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle>{project.title}</CardTitle>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Edit Project Context</DialogTitle>
+                              <DialogDescription>
+                                Add more context about your current work or situation.
+                                This helps the AI adapt the project tasks.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <form
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                if (editingProject) {
+                                  updateProjectContextMutation.mutate({
+                                    id: project.id,
+                                    context: editingProject.context,
+                                  });
+                                }
+                              }}
+                              className="space-y-4"
+                            >
+                              <div>
+                                <Label htmlFor="project-context">Context</Label>
+                                <Textarea
+                                  id="project-context"
+                                  value={
+                                    editingProject?.id === project.id
+                                      ? editingProject.context
+                                      : project.context
+                                  }
+                                  onChange={(e) =>
+                                    setEditingProject({
+                                      id: project.id,
+                                      context: e.target.value,
+                                    })
+                                  }
+                                  placeholder="E.g., I'm working on a React application that needs state management..."
+                                />
+                              </div>
+                              <Button type="submit" className="w-full">
+                                Update Context
+                              </Button>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                      <CardDescription>{project.description}</CardDescription>
+                    </CardHeader>
                     <CardContent>
-                      <h4 className="font-medium mb-2">AI-Generated Tasks:</h4>
-                      <ul className="space-y-2">
-                        {goal.tasks.map((task: any) => (
-                          <li
-                            key={task.id}
-                            className="flex items-center gap-2 text-sm"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={task.completed}
-                              readOnly
-                            />
-                            <span>{task.title}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="mb-4">
+                        <h4 className="text-sm font-medium text-muted-foreground">Context:</h4>
+                        <p className="text-sm mt-1">{project.context || "No context added yet"}</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Tasks:</h4>
+                        <ul className="space-y-2">
+                          {project.tasks.map((task) => (
+                            <li
+                              key={task.id}
+                              className="flex items-center gap-2 text-sm"
+                            >
+                              <Checkbox
+                                id={`task-${task.id}`}
+                                checked={task.completed}
+                                onCheckedChange={(checked) =>
+                                  updateProjectTaskMutation.mutate({
+                                    projectId: project.id,
+                                    taskId: task.id,
+                                    completed: checked as boolean,
+                                  })
+                                }
+                              />
+                              <label
+                                htmlFor={`task-${task.id}`}
+                                className={task.completed ? "line-through text-muted-foreground" : ""}
+                              >
+                                {task.title}
+                                <span className="ml-2 text-xs text-muted-foreground">
+                                  (Improves: {task.skillName})
+                                </span>
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}

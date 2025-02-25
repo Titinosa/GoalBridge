@@ -24,9 +24,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/skills/:id", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    const skill = await storage.updateSkill(
+    const skill = await storage.updateSkillProgress(
       parseInt(req.params.id),
-      req.body.progress
+      req.body.completed
     );
     res.json(skill);
   });
@@ -50,22 +50,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!parsed.success) return res.status(400).json(parsed.error);
     const goal = await storage.createGoal(req.user.id, parsed.data);
 
-    // Mock AI project generation
-    const tasks = [
-      { id: 1, title: "Research industry trends", completed: false },
-      { id: 2, title: "Identify key skills needed", completed: false },
-      { id: 3, title: "Create learning roadmap", completed: false },
-      { id: 4, title: "Set milestone deadlines", completed: false },
-    ];
+    // Create an associated project with AI-generated tasks
+    const project = await storage.createProject(req.user.id, goal.id, {
+      title: `Project: ${goal.title}`,
+      description: `Implementation plan for: ${goal.description}`,
+    });
 
-    const updatedGoal = await storage.updateGoal(goal.id, tasks);
-    res.json(updatedGoal);
+    res.json({ goal, project });
   });
 
   app.delete("/api/goals/:id", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     await storage.deleteGoal(parseInt(req.params.id));
     res.sendStatus(200);
+  });
+
+  // Projects routes
+  app.get("/api/projects", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const projects = await storage.getUserProjects(req.user.id);
+    res.json(projects);
+  });
+
+  app.get("/api/goals/:goalId/project", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const project = await storage.getProjectByGoal(parseInt(req.params.goalId));
+    if (!project) return res.sendStatus(404);
+    res.json(project);
+  });
+
+  app.patch("/api/projects/:id/context", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const project = await storage.updateProjectContext(
+      parseInt(req.params.id),
+      req.body.context
+    );
+    res.json(project);
+  });
+
+  app.patch("/api/projects/:id/tasks/:taskId", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const project = await storage.updateProjectTask(
+      parseInt(req.params.id),
+      parseInt(req.params.taskId),
+      req.body.completed
+    );
+
+    // If task was completed, update related skill progress
+    if (req.body.completed) {
+      const task = project.tasks.find(t => t.id === parseInt(req.params.taskId));
+      if (task) {
+        const skills = await storage.getUserSkills(req.user.id);
+        const relatedSkill = skills.find(s => s.name === task.skillName);
+        if (relatedSkill) {
+          await storage.updateSkillProgress(relatedSkill.id, true);
+        }
+      }
+    }
+
+    res.json(project);
   });
 
   const httpServer = createServer(app);

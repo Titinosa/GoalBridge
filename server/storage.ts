@@ -1,4 +1,4 @@
-import { User, Skill, CareerGoal, InsertUser } from "@shared/schema";
+import { User, Skill, CareerGoal, Project, InsertUser } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import { scrypt, randomBytes } from "crypto";
@@ -26,6 +26,12 @@ export interface IStorage {
   createGoal(userId: number, goal: { title: string; description: string }): Promise<CareerGoal>;
   updateGoal(goalId: number, tasks: any[]): Promise<CareerGoal>;
   deleteGoal(goalId: number): Promise<void>;
+  // New project methods
+  getUserProjects(userId: number): Promise<Project[]>;
+  getProjectByGoal(goalId: number): Promise<Project | undefined>;
+  createProject(userId: number, goalId: number, project: { title: string; description: string }): Promise<Project>;
+  updateProjectContext(projectId: number, context: string): Promise<Project>;
+  updateProjectTask(projectId: number, taskId: number, completed: boolean): Promise<Project>;
   sessionStore: session.Store;
 }
 
@@ -33,31 +39,32 @@ export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private skills: Map<number, Skill>;
   private goals: Map<number, CareerGoal>;
+  private projects: Map<number, Project>;
   currentId: number;
   currentSkillId: number;
   currentGoalId: number;
+  currentProjectId: number;
   sessionStore: session.Store;
 
   constructor() {
     this.users = new Map();
     this.skills = new Map();
     this.goals = new Map();
-    this.currentId = 2; // Start from 2 since we have one hardcoded user
-    this.currentSkillId = 3; // Start from 3 since we have two hardcoded skills
-    this.currentGoalId = 2; // Start from 2 since we have one hardcoded goal
+    this.projects = new Map();
+    this.currentId = 2; 
+    this.currentSkillId = 3; 
+    this.currentGoalId = 2; 
+    this.currentProjectId = 2; 
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000,
     });
 
-    // Initialize demo data
     this.initializeDemoData();
   }
 
   private async initializeDemoData() {
-    // Create a proper password hash for the demo user
     const passwordHash = await createPasswordHash("demo123");
 
-    // Add a demo user with some initial data
     const demoUser: User = {
       id: 1,
       username: "demo",
@@ -69,14 +76,12 @@ export class MemStorage implements IStorage {
     };
     this.users.set(demoUser.id, demoUser);
 
-    // Add some demo skills with levels
     const demoSkills: Skill[] = [
       { id: 1, userId: 1, name: "React", progress: 75, level: 2 },
       { id: 2, userId: 1, name: "TypeScript", progress: 60, level: 1 },
     ];
     demoSkills.forEach(skill => this.skills.set(skill.id, skill));
 
-    // Add a demo goal with skill-linked tasks
     const demoGoal: CareerGoal = {
       id: 1,
       userId: 1,
@@ -90,7 +95,23 @@ export class MemStorage implements IStorage {
       ],
     };
     this.goals.set(demoGoal.id, demoGoal);
+
+    const demoProject: Project = {
+      id: 1,
+      goalId: 1,
+      userId: 1,
+      title: "Build a Custom Hook Library",
+      description: "Create a collection of reusable React hooks",
+      context: "Working on a project that needs state management and data fetching patterns",
+      tasks: [
+        { id: 1, title: "Create useLocalStorage hook", completed: false, skillName: "React" },
+        { id: 2, title: "Implement useFetch with TypeScript", completed: false, skillName: "TypeScript" },
+        { id: 3, title: "Add useAsync hook for async operations", completed: false, skillName: "React" },
+      ],
+    };
+    this.projects.set(demoProject.id, demoProject);
   }
+
 
   async getUser(id: number): Promise<User | undefined> {
     return this.users.get(id);
@@ -126,19 +147,13 @@ export class MemStorage implements IStorage {
     const skill = this.skills.get(skillId);
     if (!skill) throw new Error("Skill not found");
 
-    // Update progress based on task completion
     let newProgress = skill.progress + (taskCompleted ? 10 : -10);
-
-    // Keep progress within 0-100 range
     newProgress = Math.max(0, Math.min(100, newProgress));
-
-    // Level up if progress reaches 100
     let newLevel = skill.level;
     if (newProgress >= 100) {
       newLevel++;
       newProgress = 0;
     }
-
     const updatedSkill = { ...skill, progress: newProgress, level: newLevel };
     this.skills.set(skillId, updatedSkill);
     return updatedSkill;
@@ -177,6 +192,62 @@ export class MemStorage implements IStorage {
 
   async deleteGoal(goalId: number): Promise<void> {
     this.goals.delete(goalId);
+  }
+
+  async getUserProjects(userId: number): Promise<Project[]> {
+    return Array.from(this.projects.values()).filter(
+      (project) => project.userId === userId,
+    );
+  }
+
+  async getProjectByGoal(goalId: number): Promise<Project | undefined> {
+    return Array.from(this.projects.values()).find(
+      (project) => project.goalId === goalId,
+    );
+  }
+
+  async createProject(
+    userId: number,
+    goalId: number,
+    project: { title: string; description: string },
+  ): Promise<Project> {
+    const id = this.currentProjectId++;
+    const newProject: Project = {
+      id,
+      userId,
+      goalId,
+      ...project,
+      context: "",
+      tasks: [
+        { id: 1, title: "Research and planning", completed: false, skillName: "Planning" },
+        { id: 2, title: "Initial implementation", completed: false, skillName: "Development" },
+        { id: 3, title: "Testing and refinement", completed: false, skillName: "Testing" },
+      ],
+    };
+    this.projects.set(id, newProject);
+    return newProject;
+  }
+
+  async updateProjectContext(projectId: number, context: string): Promise<Project> {
+    const project = this.projects.get(projectId);
+    if (!project) throw new Error("Project not found");
+
+    const updatedProject = { ...project, context };
+    this.projects.set(projectId, updatedProject);
+    return updatedProject;
+  }
+
+  async updateProjectTask(projectId: number, taskId: number, completed: boolean): Promise<Project> {
+    const project = this.projects.get(projectId);
+    if (!project) throw new Error("Project not found");
+
+    const updatedTasks = project.tasks.map(task =>
+      task.id === taskId ? { ...task, completed } : task
+    );
+
+    const updatedProject = { ...project, tasks: updatedTasks };
+    this.projects.set(projectId, updatedProject);
+    return updatedProject;
   }
 }
 
