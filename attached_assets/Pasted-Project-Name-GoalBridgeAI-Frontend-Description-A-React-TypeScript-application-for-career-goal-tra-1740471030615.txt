@@ -1,0 +1,91 @@
+Project Name: GoalBridgeAI Frontend
+Description: A React TypeScript application for career goal tracking and management
+
+what is it? a front end that will plug in to a separate back end. this front end starts with a login/signup page, then navigates forward to a landing page where we see a users's/employees skillset profile.
+the profle includes the users infor on the left along with current position, etc. Then there's a skills area where current skills with progress bars are located. we have the ability to add/remove new skills.
+there are career goals as well. goals can be added or deleted. every timme a new goal is added a new project with project tasks is created by AI in a project section.
+
+
+Directory Structure:
+
+Root Configuration Files:
+package.json: Node.js project configuration with dependencies including React, TypeScript, Tailwind CSS, shadcn/ui
+tsconfig.json: TypeScript compiler configuration
+tailwind.config.js: Tailwind CSS configuration
+.replit: Replit-specific configuration for running on port 3000
+Public Directory:
+index.html: Main HTML template
+manifest.json: Web app manifest for PWA support
+Various icons (favicon.ico, logo192.png, logo512.png)
+Source Directory (src/):
+a) Core Files:
+
+index.tsx: Application entry point, renders App component using ReactDOM
+App.tsx: Main component with routing logic
+Components: Home, App (FC)
+State: authToken
+Functions: logout
+config.ts: Configuration file with BASE_URL constant
+b) AuthorizationComponent/:
+
+AuthorizationComponent.tsx:
+Component: PrivateRoute
+States: isAuthenticated, loading
+Functions: validateToken
+c) LoginPage/:
+
+LoginPage.tsx: Login form component
+SignUpPage.tsx: Registration form component
+SignUpPage.css: Styling for signup form
+d) UserProfile/:
+
+UserProfileComponent.tsx:
+
+Component: UserProfile
+Refs: resizerRef, leftRef, rightRef
+Event handlers: onMouseDown, onMouseMove, onMouseUp
+CareerGoalsComponent/:
+
+CareerGoalsComponent.tsx:
+Component: CareerGoalsComponent
+States: careerGoals, newGoal, selectedProject
+Functions: addGoalRoadmap, createNewRoadmap, openProjectModal, closeProjectModal
+e) MeetingFilesUploadComponent/:
+
+Component for handling file uploads
+f) Projects/:
+
+ProjectQueueComponent: Manages project queue display
+g) Types/:
+
+userInterfaces.ts: TypeScript interfaces for:
+GoalRoadmap
+Project
+Subtask
+h) Services/:
+
+userProfileServices.ts: API services for user profile management
+Function: getCareerGoals
+Main Features:
+
+Authentication system with protected routes
+Career goal tracking and management
+Project queue system
+Meeting files upload functionality
+User profile management
+Styling:
+
+shadcn/ui components for enhanced UI elements
+Uses combination of Tailwind CSS and custom CSS
+Bootstrap for basic styling
+
+Dependencies:
+
+React 18
+TypeScript 4.4
+Tailwind CSS
+Bootstrap 5.3
+shadcn/ui components
+React Router DOM v7
+Axios for API calls
+This structure provides a complete TypeScript React application with authentication, routing, and various user management features.
