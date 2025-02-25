@@ -1,11 +1,8 @@
-import { db } from "./db";
-import { users, type User, type InsertUser, skills, type Skill, careerGoals, type CareerGoal } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { User, Skill, CareerGoal, InsertUser } from "@shared/schema";
 import session from "express-session";
-import connectPg from "connect-pg-simple";
-import { pool } from "./db";
+import createMemoryStore from "memorystore";
 
-const PostgresSessionStore = connectPg(session);
+const MemoryStore = createMemoryStore(session);
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -22,87 +19,133 @@ export interface IStorage {
   sessionStore: session.Store;
 }
 
-export class DatabaseStorage implements IStorage {
+export class MemStorage implements IStorage {
+  private users: Map<number, User>;
+  private skills: Map<number, Skill>;
+  private goals: Map<number, CareerGoal>;
+  currentId: number;
+  currentSkillId: number;
+  currentGoalId: number;
   sessionStore: session.Store;
 
   constructor() {
-    this.sessionStore = new PostgresSessionStore({
-      pool,
-      createTableIfMissing: true,
+    this.users = new Map();
+    this.skills = new Map();
+    this.goals = new Map();
+    this.currentId = 2; // Start from 2 since we have one hardcoded user
+    this.currentSkillId = 3; // Start from 3 since we have two hardcoded skills
+    this.currentGoalId = 2; // Start from 2 since we have one hardcoded goal
+    this.sessionStore = new MemoryStore({
+      checkPeriod: 86400000,
     });
+
+    // Add a demo user with some initial data
+    const demoUser: User = {
+      id: 1,
+      username: "demo",
+      password: "$2b$10$demopasswordhash", // This is just a mock hash
+      fullName: "Demo User",
+      currentPosition: "Software Developer",
+      bio: "Passionate about learning and growing in tech",
+      avatarUrl: null,
+    };
+    this.users.set(demoUser.id, demoUser);
+
+    // Add some demo skills
+    const demoSkills: Skill[] = [
+      { id: 1, userId: 1, name: "React", progress: 75 },
+      { id: 2, userId: 1, name: "TypeScript", progress: 60 },
+    ];
+    demoSkills.forEach(skill => this.skills.set(skill.id, skill));
+
+    // Add a demo goal
+    const demoGoal: CareerGoal = {
+      id: 1,
+      userId: 1,
+      title: "Learn Advanced React Patterns",
+      description: "Master advanced React concepts and design patterns",
+      completed: false,
+      tasks: [
+        { id: 1, title: "Study React hooks in depth", completed: true },
+        { id: 2, title: "Learn about React Context", completed: false },
+        { id: 3, title: "Practice custom hooks", completed: false },
+      ],
+    };
+    this.goals.set(demoGoal.id, demoGoal);
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    return this.users.get(id);
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user;
+    return Array.from(this.users.values()).find(
+      (user) => user.username === username,
+    );
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
+    const id = this.currentId++;
+    const user: User = { ...insertUser, id };
+    this.users.set(id, user);
     return user;
   }
 
   async getUserSkills(userId: number): Promise<Skill[]> {
-    return await db.select().from(skills).where(eq(skills.userId, userId));
+    return Array.from(this.skills.values()).filter(
+      (skill) => skill.userId === userId,
+    );
   }
 
   async createSkill(userId: number, skill: { name: string; progress: number }): Promise<Skill> {
-    const [newSkill] = await db
-      .insert(skills)
-      .values({ userId, ...skill })
-      .returning();
+    const id = this.currentSkillId++;
+    const newSkill: Skill = { id, userId, ...skill };
+    this.skills.set(id, newSkill);
     return newSkill;
   }
 
   async updateSkill(skillId: number, progress: number): Promise<Skill> {
-    const [skill] = await db
-      .update(skills)
-      .set({ progress })
-      .where(eq(skills.id, skillId))
-      .returning();
+    const skill = this.skills.get(skillId);
     if (!skill) throw new Error("Skill not found");
-    return skill;
+    const updatedSkill = { ...skill, progress };
+    this.skills.set(skillId, updatedSkill);
+    return updatedSkill;
   }
 
   async deleteSkill(skillId: number): Promise<void> {
-    await db.delete(skills).where(eq(skills.id, skillId));
+    this.skills.delete(skillId);
   }
 
   async getUserGoals(userId: number): Promise<CareerGoal[]> {
-    return await db.select().from(careerGoals).where(eq(careerGoals.userId, userId));
+    return Array.from(this.goals.values()).filter(
+      (goal) => goal.userId === userId,
+    );
   }
 
   async createGoal(userId: number, goal: { title: string; description: string }): Promise<CareerGoal> {
-    const [newGoal] = await db
-      .insert(careerGoals)
-      .values({
-        userId,
-        ...goal,
-        completed: false,
-        tasks: [],
-      })
-      .returning();
+    const id = this.currentGoalId++;
+    const newGoal: CareerGoal = {
+      id,
+      userId,
+      ...goal,
+      completed: false,
+      tasks: [],
+    };
+    this.goals.set(id, newGoal);
     return newGoal;
   }
 
   async updateGoal(goalId: number, tasks: any[]): Promise<CareerGoal> {
-    const [goal] = await db
-      .update(careerGoals)
-      .set({ tasks })
-      .where(eq(careerGoals.id, goalId))
-      .returning();
+    const goal = this.goals.get(goalId);
     if (!goal) throw new Error("Goal not found");
-    return goal;
+    const updatedGoal = { ...goal, tasks };
+    this.goals.set(goalId, updatedGoal);
+    return updatedGoal;
   }
 
   async deleteGoal(goalId: number): Promise<void> {
-    await db.delete(careerGoals).where(eq(careerGoals.id, goalId));
+    this.goals.delete(goalId);
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new MemStorage();
