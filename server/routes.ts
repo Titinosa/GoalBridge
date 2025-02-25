@@ -49,15 +49,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const parsed = insertCareerGoalSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(parsed.error);
-    const goal = await storage.createGoal(req.user.id, parsed.data);
 
-    // Create an associated project with smarter task generation
+    const goal = await storage.createGoal(req.user.id, parsed.data);
     const project = await storage.createProject(req.user.id, goal.id, {
       title: goal.title,
       description: goal.description,
     });
 
-    res.json({ goal, project });
+    // Get updated skills after project creation
+    const skills = await storage.getUserSkills(req.user.id);
+
+    res.json({ goal, project, skills });
   });
 
   app.delete("/api/goals/:id", async (req, res) => {
@@ -115,6 +117,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     res.json(project);
   });
+
+  // Add new routes for project and task deletion
+  app.delete("/api/projects/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    await storage.deleteProject(parseInt(req.params.id));
+    res.sendStatus(200);
+  });
+
+  app.delete("/api/projects/:id/tasks/:taskId", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const project = await storage.deleteProjectTask(
+      parseInt(req.params.id),
+      parseInt(req.params.taskId)
+    );
+    res.json(project);
+  });
+
 
   const httpServer = createServer(app);
   return httpServer;

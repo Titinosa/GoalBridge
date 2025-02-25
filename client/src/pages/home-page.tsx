@@ -136,6 +136,25 @@ export default function HomePage() {
     },
   });
 
+  const deleteProjectMutation = useMutation({
+    mutationFn: async (projectId: number) => {
+      await apiRequest("DELETE", `/api/projects/${projectId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    },
+  });
+
+  const deleteProjectTaskMutation = useMutation({
+    mutationFn: async ({ projectId, taskId }: { projectId: number; taskId: number }) => {
+      const res = await apiRequest("DELETE", `/api/projects/${projectId}/tasks/${taskId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    },
+  });
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
@@ -332,56 +351,65 @@ export default function HomePage() {
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle>{project.title}</CardTitle>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Edit Project Context</DialogTitle>
-                              <DialogDescription>
-                                Add more context about your current work or situation.
-                                This helps the AI adapt the project tasks.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <form
-                              onSubmit={(e) => {
-                                e.preventDefault();
-                                if (editingProject) {
-                                  updateProjectContextMutation.mutate({
-                                    id: project.id,
-                                    context: editingProject.context,
-                                  });
-                                }
-                              }}
-                              className="space-y-4"
-                            >
-                              <div>
-                                <Label htmlFor="project-context">Context</Label>
-                                <Textarea
-                                  id="project-context"
-                                  value={
-                                    editingProject?.id === project.id
-                                      ? editingProject.context
-                                      : project.context
-                                  }
-                                  onChange={(e) =>
-                                    setEditingProject({
-                                      id: project.id,
-                                      context: e.target.value,
-                                    })
-                                  }
-                                  placeholder="E.g., I'm working on a React application that needs state management..."
-                                />
-                              </div>
-                              <Button type="submit" className="w-full">
-                                Update Context
+                        <div className="flex gap-2">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <Edit className="h-4 w-4" />
                               </Button>
-                            </form>
-                          </DialogContent>
-                        </Dialog>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Edit Project Context</DialogTitle>
+                                <DialogDescription>
+                                  Add more context about your current work or situation.
+                                  This helps the AI adapt the project tasks.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <form
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  if (editingProject) {
+                                    updateProjectContextMutation.mutate({
+                                      id: project.id,
+                                      context: editingProject.context,
+                                    });
+                                  }
+                                }}
+                                className="space-y-4"
+                              >
+                                <div>
+                                  <Label htmlFor="project-context">Context</Label>
+                                  <Textarea
+                                    id="project-context"
+                                    value={
+                                      editingProject?.id === project.id
+                                        ? editingProject.context
+                                        : project.context
+                                    }
+                                    onChange={(e) =>
+                                      setEditingProject({
+                                        id: project.id,
+                                        context: e.target.value,
+                                      })
+                                    }
+                                    placeholder="E.g., I'm working on a React application that needs state management..."
+                                  />
+                                </div>
+                                <Button type="submit" className="w-full">
+                                  Update Context
+                                </Button>
+                              </form>
+                            </DialogContent>
+                          </Dialog>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteProjectMutation.mutate(project.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                       <CardDescription>{project.description}</CardDescription>
                     </CardHeader>
@@ -411,13 +439,25 @@ export default function HomePage() {
                               />
                               <label
                                 htmlFor={`task-${task.id}`}
-                                className={task.completed ? "line-through text-muted-foreground" : ""}
+                                className={`flex-1 ${task.completed ? "line-through text-muted-foreground" : ""}`}
                               >
                                 {task.title}
                                 <span className="ml-2 text-xs text-muted-foreground">
                                   (Improves: {task.skillName})
                                 </span>
                               </label>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  deleteProjectTaskMutation.mutate({
+                                    projectId: project.id,
+                                    taskId: task.id,
+                                  })
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </li>
                           ))}
                         </ul>

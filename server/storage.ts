@@ -32,6 +32,8 @@ export interface IStorage {
   createProject(userId: number, goalId: number, goal: { title: string; description: string }): Promise<Project>;
   updateProjectContext(projectId: number, context: string): Promise<Project>;
   updateProjectTask(projectId: number, taskId: number, completed: boolean): Promise<Project>;
+  deleteProject(projectId: number): Promise<void>;
+  deleteProjectTask(projectId: number, taskId: number): Promise<Project>;
   sessionStore: session.Store;
 }
 
@@ -51,10 +53,10 @@ export class MemStorage implements IStorage {
     this.skills = new Map();
     this.goals = new Map();
     this.projects = new Map();
-    this.currentId = 2; 
-    this.currentSkillId = 3; 
-    this.currentGoalId = 2; 
-    this.currentProjectId = 2; 
+    this.currentId = 2;
+    this.currentSkillId = 3;
+    this.currentGoalId = 2;
+    this.currentProjectId = 2;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000,
     });
@@ -159,9 +161,9 @@ export class MemStorage implements IStorage {
         newProgress = 0;
       }
 
-      const updatedSkill = { 
-        ...skill, 
-        progress: newProgress, 
+      const updatedSkill = {
+        ...skill,
+        progress: newProgress,
         level: newLevel,
         completedTasks: [...skill.completedTasks, taskId]
       };
@@ -220,30 +222,40 @@ export class MemStorage implements IStorage {
     );
   }
 
-  // Helper to generate more specific project tasks based on goal
   private generateProjectTasks(goalTitle: string, goalDescription: string): Project['tasks'] {
-    // For demonstration, let's create more specific tasks based on the goal
+    // Create more specific and actionable tasks based on the goal
+    const commonTasks = [
+      { title: "Research best practices and current trends", skillName: "Research" },
+      { title: "Create a detailed implementation plan", skillName: "Planning" },
+      { title: "Set up development environment and tools", skillName: "Development" },
+    ];
+
     if (goalTitle.toLowerCase().includes("react")) {
       return [
-        { id: 1, title: "Build a proof-of-concept component", completed: false, skillName: "React" },
-        { id: 2, title: "Implement state management pattern", completed: false, skillName: "React" },
-        { id: 3, title: "Write unit tests with React Testing Library", completed: false, skillName: "React" },
-      ];
-    } else if (goalTitle.toLowerCase().includes("typescript")) {
-      return [
-        { id: 1, title: "Create type definitions for domain models", completed: false, skillName: "TypeScript" },
-        { id: 2, title: "Implement generic utility types", completed: false, skillName: "TypeScript" },
-        { id: 3, title: "Add type safety to async operations", completed: false, skillName: "TypeScript" },
-      ];
+        ...commonTasks,
+        { title: "Build reusable component library", skillName: "React" },
+        { title: "Implement state management with Context/Redux", skillName: "React" },
+        { title: "Create unit tests with React Testing Library", skillName: "Testing" },
+      ].map((task, index) => ({ ...task, id: index + 1, completed: false }));
     }
 
-    // Default tasks with focus on planning and execution
+    if (goalTitle.toLowerCase().includes("typescript")) {
+      return [
+        ...commonTasks,
+        { title: "Define core type definitions and interfaces", skillName: "TypeScript" },
+        { title: "Implement generic utility types", skillName: "TypeScript" },
+        { title: "Add strict type checking to async operations", skillName: "TypeScript" },
+      ].map((task, index) => ({ ...task, id: index + 1, completed: false }));
+    }
+
+    // Default project structure with planning and execution focus
     return [
-      { id: 1, title: "Create detailed implementation plan", completed: false, skillName: "Planning" },
-      { id: 2, title: "Set up development environment", completed: false, skillName: "Development" },
-      { id: 3, title: "Implement core functionality", completed: false, skillName: "Development" },
-      { id: 4, title: "Write documentation and tests", completed: false, skillName: "Documentation" },
-    ];
+      { title: "Research and analyze requirements", skillName: "Research" },
+      { title: "Create project timeline and milestones", skillName: "Planning" },
+      { title: "Set up development environment", skillName: "Development" },
+      { title: "Implement core functionality", skillName: "Development" },
+      { title: "Write documentation and tests", skillName: "Documentation" },
+    ].map((task, index) => ({ ...task, id: index + 1, completed: false }));
   }
 
   async createProject(
@@ -253,11 +265,28 @@ export class MemStorage implements IStorage {
   ): Promise<Project> {
     const id = this.currentProjectId++;
 
-    // Generate a more specific project title
-    const projectTitle = `Implementation: ${goal.title}`;
+    // Generate a project based on the career goal context
+    const projectTitle = `Project: ${goal.title}`;
+    const projectDescription =
+      `This project is designed to help you achieve your career goal: ${goal.description}. ` +
+      `It's structured with bite-sized, actionable tasks that will build your skills progressively over time.`;
 
-    // Create a more detailed project description
-    const projectDescription = `Practical implementation project to achieve: ${goal.description}. This project will help you gain hands-on experience and measurable progress toward your goal.`;
+    const tasks = this.generateProjectTasks(goal.title, goal.description);
+
+    // Auto-create skills for any new skill mentioned in tasks
+    const uniqueSkills = [...new Set(tasks.map(task => task.skillName))];
+    for (const skillName of uniqueSkills) {
+      const existingSkill = Array.from(this.skills.values()).find(
+        s => s.userId === userId && s.name === skillName
+      );
+      if (!existingSkill) {
+        await this.createSkill(userId, {
+          name: skillName,
+          progress: 0,
+          level: 1,
+        });
+      }
+    }
 
     const newProject: Project = {
       id,
@@ -266,7 +295,7 @@ export class MemStorage implements IStorage {
       title: projectTitle,
       description: projectDescription,
       context: "",
-      tasks: this.generateProjectTasks(goal.title, goal.description),
+      tasks,
     };
     this.projects.set(id, newProject);
     return newProject;
@@ -289,6 +318,20 @@ export class MemStorage implements IStorage {
       task.id === taskId ? { ...task, completed } : task
     );
 
+    const updatedProject = { ...project, tasks: updatedTasks };
+    this.projects.set(projectId, updatedProject);
+    return updatedProject;
+  }
+
+  async deleteProject(projectId: number): Promise<void> {
+    this.projects.delete(projectId);
+  }
+
+  async deleteProjectTask(projectId: number, taskId: number): Promise<Project> {
+    const project = this.projects.get(projectId);
+    if (!project) throw new Error("Project not found");
+
+    const updatedTasks = project.tasks.filter(task => task.id !== taskId);
     const updatedProject = { ...project, tasks: updatedTasks };
     this.projects.set(projectId, updatedProject);
     return updatedProject;
