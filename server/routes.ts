@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { insertSkillSchema, insertCareerGoalSchema } from "@shared/schema";
+import { processChatMessage } from "./chat";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -134,6 +135,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(project);
   });
 
+  // Add chat endpoint after other routes
+  app.post("/api/chat", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const response = await processChatMessage(req.user.id, req.body.message);
+    res.json(response);
+  });
 
   const httpServer = createServer(app);
   return httpServer;

@@ -4,6 +4,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { MessageCircle, X, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Message {
   id: string;
@@ -16,10 +19,13 @@ export function ChatInterface() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || isLoading) return;
 
     // Add user message
     const userMessage: Message = {
@@ -30,15 +36,37 @@ export function ChatInterface() {
     };
     setMessages(prev => [...prev, userMessage]);
     setInput("");
+    setIsLoading(true);
 
-    // TODO: Process message and get response
-    const assistantMessage: Message = {
-      id: crypto.randomUUID(),
-      content: "I'm here to help! (Response processing coming soon)",
-      sender: "assistant",
-      timestamp: new Date(),
-    };
-    setMessages(prev => [...prev, assistantMessage]);
+    try {
+      const response = await apiRequest("POST", "/api/chat", { message: input });
+      const result = await response.json();
+
+      // Add assistant's response
+      const assistantMessage: Message = {
+        id: crypto.randomUUID(),
+        content: result.message,
+        sender: "assistant",
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+
+      // If there was an action that modified data, invalidate relevant queries
+      if (result.type === "success" && result.data) {
+        if (result.data.goal) queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
+        if (result.data.project) queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+        if (result.data.skill) queryClient.invalidateQueries({ queryKey: ["/api/skills"] });
+      }
+
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to process your message. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -85,8 +113,9 @@ export function ChatInterface() {
               onChange={e => setInput(e.target.value)}
               placeholder="Ask me anything..."
               className="flex-1"
+              disabled={isLoading}
             />
-            <Button type="submit" size="icon">
+            <Button type="submit" size="icon" disabled={isLoading}>
               <Send className="h-4 w-4" />
             </Button>
           </form>
