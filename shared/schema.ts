@@ -32,6 +32,7 @@ export interface Skill {
   name: string;
   progress: number;
   level: number;
+  completedTasks: string[]; // Array of taskIds that have contributed to progress
 }
 
 export interface CareerGoal {
@@ -59,6 +60,6 @@ export interface Project {
     id: number;
     title: string;
     completed: boolean;
-    skillName: string; // The skill this task helps improve
+    skillName: string; // The skill this task helps improve 
   }>;
 }

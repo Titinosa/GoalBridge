@@ -26,6 +26,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const skill = await storage.updateSkillProgress(
       parseInt(req.params.id),
+      req.body.taskId,
       req.body.completed
     );
     res.json(skill);
@@ -50,10 +51,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!parsed.success) return res.status(400).json(parsed.error);
     const goal = await storage.createGoal(req.user.id, parsed.data);
 
-    // Create an associated project with AI-generated tasks
+    // Create an associated project with smarter task generation
     const project = await storage.createProject(req.user.id, goal.id, {
-      title: `Project: ${goal.title}`,
-      description: `Implementation plan for: ${goal.description}`,
+      title: goal.title,
+      description: goal.description,
     });
 
     res.json({ goal, project });
@@ -103,7 +104,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const skills = await storage.getUserSkills(req.user.id);
         const relatedSkill = skills.find(s => s.name === task.skillName);
         if (relatedSkill) {
-          await storage.updateSkillProgress(relatedSkill.id, true);
+          await storage.updateSkillProgress(
+            relatedSkill.id,
+            `${project.id}-${task.id}`, // Use unique task identifier
+            true
+          );
         }
       }
     }

@@ -20,7 +20,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   getUserSkills(userId: number): Promise<Skill[]>;
   createSkill(userId: number, skill: { name: string; progress: number; level: number }): Promise<Skill>;
-  updateSkillProgress(skillId: number, taskCompleted: boolean): Promise<Skill>;
+  updateSkillProgress(skillId: number, taskId: string, completed: boolean): Promise<Skill>;
   deleteSkill(skillId: number): Promise<void>;
   getUserGoals(userId: number): Promise<CareerGoal[]>;
   createGoal(userId: number, goal: { title: string; description: string }): Promise<CareerGoal>;
@@ -29,7 +29,7 @@ export interface IStorage {
   // New project methods
   getUserProjects(userId: number): Promise<Project[]>;
   getProjectByGoal(goalId: number): Promise<Project | undefined>;
-  createProject(userId: number, goalId: number, project: { title: string; description: string }): Promise<Project>;
+  createProject(userId: number, goalId: number, goal: { title: string; description: string }): Promise<Project>;
   updateProjectContext(projectId: number, context: string): Promise<Project>;
   updateProjectTask(projectId: number, taskId: number, completed: boolean): Promise<Project>;
   sessionStore: session.Store;
@@ -77,8 +77,8 @@ export class MemStorage implements IStorage {
     this.users.set(demoUser.id, demoUser);
 
     const demoSkills: Skill[] = [
-      { id: 1, userId: 1, name: "React", progress: 75, level: 2 },
-      { id: 2, userId: 1, name: "TypeScript", progress: 60, level: 1 },
+      { id: 1, userId: 1, name: "React", progress: 75, level: 2, completedTasks: [] },
+      { id: 2, userId: 1, name: "TypeScript", progress: 60, level: 1, completedTasks: [] },
     ];
     demoSkills.forEach(skill => this.skills.set(skill.id, skill));
 
@@ -138,25 +138,39 @@ export class MemStorage implements IStorage {
 
   async createSkill(userId: number, skill: { name: string; progress: number; level: number }): Promise<Skill> {
     const id = this.currentSkillId++;
-    const newSkill: Skill = { id, userId, ...skill };
+    const newSkill: Skill = { id, userId, ...skill, completedTasks: [] };
     this.skills.set(id, newSkill);
     return newSkill;
   }
 
-  async updateSkillProgress(skillId: number, taskCompleted: boolean): Promise<Skill> {
+  async updateSkillProgress(skillId: number, taskId: string, completed: boolean): Promise<Skill> {
     const skill = this.skills.get(skillId);
     if (!skill) throw new Error("Skill not found");
 
-    let newProgress = skill.progress + (taskCompleted ? 10 : -10);
-    newProgress = Math.max(0, Math.min(100, newProgress));
-    let newLevel = skill.level;
-    if (newProgress >= 100) {
-      newLevel++;
-      newProgress = 0;
+    // Only update progress if:
+    // 1. Task is being completed AND
+    // 2. Task hasn't been counted before
+    if (completed && !skill.completedTasks.includes(taskId)) {
+      let newProgress = skill.progress + 10;
+      let newLevel = skill.level;
+
+      if (newProgress >= 100) {
+        newLevel++;
+        newProgress = 0;
+      }
+
+      const updatedSkill = { 
+        ...skill, 
+        progress: newProgress, 
+        level: newLevel,
+        completedTasks: [...skill.completedTasks, taskId]
+      };
+      this.skills.set(skillId, updatedSkill);
+      return updatedSkill;
     }
-    const updatedSkill = { ...skill, progress: newProgress, level: newLevel };
-    this.skills.set(skillId, updatedSkill);
-    return updatedSkill;
+
+    // If task is being uncompleted, don't change progress
+    return skill;
   }
 
   async deleteSkill(skillId: number): Promise<void> {
@@ -206,23 +220,53 @@ export class MemStorage implements IStorage {
     );
   }
 
+  // Helper to generate more specific project tasks based on goal
+  private generateProjectTasks(goalTitle: string, goalDescription: string): Project['tasks'] {
+    // For demonstration, let's create more specific tasks based on the goal
+    if (goalTitle.toLowerCase().includes("react")) {
+      return [
+        { id: 1, title: "Build a proof-of-concept component", completed: false, skillName: "React" },
+        { id: 2, title: "Implement state management pattern", completed: false, skillName: "React" },
+        { id: 3, title: "Write unit tests with React Testing Library", completed: false, skillName: "React" },
+      ];
+    } else if (goalTitle.toLowerCase().includes("typescript")) {
+      return [
+        { id: 1, title: "Create type definitions for domain models", completed: false, skillName: "TypeScript" },
+        { id: 2, title: "Implement generic utility types", completed: false, skillName: "TypeScript" },
+        { id: 3, title: "Add type safety to async operations", completed: false, skillName: "TypeScript" },
+      ];
+    }
+
+    // Default tasks with focus on planning and execution
+    return [
+      { id: 1, title: "Create detailed implementation plan", completed: false, skillName: "Planning" },
+      { id: 2, title: "Set up development environment", completed: false, skillName: "Development" },
+      { id: 3, title: "Implement core functionality", completed: false, skillName: "Development" },
+      { id: 4, title: "Write documentation and tests", completed: false, skillName: "Documentation" },
+    ];
+  }
+
   async createProject(
     userId: number,
     goalId: number,
-    project: { title: string; description: string },
+    goal: { title: string; description: string },
   ): Promise<Project> {
     const id = this.currentProjectId++;
+
+    // Generate a more specific project title
+    const projectTitle = `Implementation: ${goal.title}`;
+
+    // Create a more detailed project description
+    const projectDescription = `Practical implementation project to achieve: ${goal.description}. This project will help you gain hands-on experience and measurable progress toward your goal.`;
+
     const newProject: Project = {
       id,
       userId,
       goalId,
-      ...project,
+      title: projectTitle,
+      description: projectDescription,
       context: "",
-      tasks: [
-        { id: 1, title: "Research and planning", completed: false, skillName: "Planning" },
-        { id: 2, title: "Initial implementation", completed: false, skillName: "Development" },
-        { id: 3, title: "Testing and refinement", completed: false, skillName: "Testing" },
-      ],
+      tasks: this.generateProjectTasks(goal.title, goal.description),
     };
     this.projects.set(id, newProject);
     return newProject;
