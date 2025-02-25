@@ -1,8 +1,11 @@
-import { User, Skill, CareerGoal, InsertUser } from "@shared/schema";
+import { db } from "./db";
+import { users, type User, type InsertUser, skills, type Skill, careerGoals, type CareerGoal } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 
-const MemoryStore = createMemoryStore(session);
+const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -19,99 +22,87 @@ export interface IStorage {
   sessionStore: session.Store;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private skills: Map<number, Skill>;
-  private goals: Map<number, CareerGoal>;
-  currentId: number;
-  currentSkillId: number;
-  currentGoalId: number;
+export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    this.users = new Map();
-    this.skills = new Map();
-    this.goals = new Map();
-    this.currentId = 1;
-    this.currentSkillId = 1;
-    this.currentGoalId = 1;
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000,
+    this.sessionStore = new PostgresSessionStore({
+      pool,
+      createTableIfMissing: true,
     });
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentId++;
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
   async getUserSkills(userId: number): Promise<Skill[]> {
-    return Array.from(this.skills.values()).filter(
-      (skill) => skill.userId === userId,
-    );
+    return await db.select().from(skills).where(eq(skills.userId, userId));
   }
 
   async createSkill(userId: number, skill: { name: string; progress: number }): Promise<Skill> {
-    const id = this.currentSkillId++;
-    const newSkill: Skill = { id, userId, ...skill };
-    this.skills.set(id, newSkill);
+    const [newSkill] = await db
+      .insert(skills)
+      .values({ userId, ...skill })
+      .returning();
     return newSkill;
   }
 
   async updateSkill(skillId: number, progress: number): Promise<Skill> {
-    const skill = this.skills.get(skillId);
+    const [skill] = await db
+      .update(skills)
+      .set({ progress })
+      .where(eq(skills.id, skillId))
+      .returning();
     if (!skill) throw new Error("Skill not found");
-    const updatedSkill = { ...skill, progress };
-    this.skills.set(skillId, updatedSkill);
-    return updatedSkill;
+    return skill;
   }
 
   async deleteSkill(skillId: number): Promise<void> {
-    this.skills.delete(skillId);
+    await db.delete(skills).where(eq(skills.id, skillId));
   }
 
   async getUserGoals(userId: number): Promise<CareerGoal[]> {
-    return Array.from(this.goals.values()).filter(
-      (goal) => goal.userId === userId,
-    );
+    return await db.select().from(careerGoals).where(eq(careerGoals.userId, userId));
   }
 
   async createGoal(userId: number, goal: { title: string; description: string }): Promise<CareerGoal> {
-    const id = this.currentGoalId++;
-    const newGoal: CareerGoal = {
-      id,
-      userId,
-      ...goal,
-      completed: false,
-      tasks: [],
-    };
-    this.goals.set(id, newGoal);
+    const [newGoal] = await db
+      .insert(careerGoals)
+      .values({
+        userId,
+        ...goal,
+        completed: false,
+        tasks: [],
+      })
+      .returning();
     return newGoal;
   }
 
   async updateGoal(goalId: number, tasks: any[]): Promise<CareerGoal> {
-    const goal = this.goals.get(goalId);
+    const [goal] = await db
+      .update(careerGoals)
+      .set({ tasks })
+      .where(eq(careerGoals.id, goalId))
+      .returning();
     if (!goal) throw new Error("Goal not found");
-    const updatedGoal = { ...goal, tasks };
-    this.goals.set(goalId, updatedGoal);
-    return updatedGoal;
+    return goal;
   }
 
   async deleteGoal(goalId: number): Promise<void> {
-    this.goals.delete(goalId);
+    await db.delete(careerGoals).where(eq(careerGoals.id, goalId));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
