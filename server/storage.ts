@@ -19,8 +19,8 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getUserSkills(userId: number): Promise<Skill[]>;
-  createSkill(userId: number, skill: { name: string; progress: number }): Promise<Skill>;
-  updateSkill(skillId: number, progress: number): Promise<Skill>;
+  createSkill(userId: number, skill: { name: string; progress: number; level: number }): Promise<Skill>;
+  updateSkillProgress(skillId: number, taskCompleted: boolean): Promise<Skill>;
   deleteSkill(skillId: number): Promise<void>;
   getUserGoals(userId: number): Promise<CareerGoal[]>;
   createGoal(userId: number, goal: { title: string; description: string }): Promise<CareerGoal>;
@@ -69,14 +69,14 @@ export class MemStorage implements IStorage {
     };
     this.users.set(demoUser.id, demoUser);
 
-    // Add some demo skills
+    // Add some demo skills with levels
     const demoSkills: Skill[] = [
-      { id: 1, userId: 1, name: "React", progress: 75 },
-      { id: 2, userId: 1, name: "TypeScript", progress: 60 },
+      { id: 1, userId: 1, name: "React", progress: 75, level: 2 },
+      { id: 2, userId: 1, name: "TypeScript", progress: 60, level: 1 },
     ];
     demoSkills.forEach(skill => this.skills.set(skill.id, skill));
 
-    // Add a demo goal
+    // Add a demo goal with skill-linked tasks
     const demoGoal: CareerGoal = {
       id: 1,
       userId: 1,
@@ -84,9 +84,9 @@ export class MemStorage implements IStorage {
       description: "Master advanced React concepts and design patterns",
       completed: false,
       tasks: [
-        { id: 1, title: "Study React hooks in depth", completed: true },
-        { id: 2, title: "Learn about React Context", completed: false },
-        { id: 3, title: "Practice custom hooks", completed: false },
+        { id: 1, title: "Study React hooks in depth", completed: true, relatedSkills: ["React"] },
+        { id: 2, title: "Learn about React Context", completed: false, relatedSkills: ["React"] },
+        { id: 3, title: "Practice TypeScript with hooks", completed: false, relatedSkills: ["React", "TypeScript"] },
       ],
     };
     this.goals.set(demoGoal.id, demoGoal);
@@ -115,17 +115,31 @@ export class MemStorage implements IStorage {
     );
   }
 
-  async createSkill(userId: number, skill: { name: string; progress: number }): Promise<Skill> {
+  async createSkill(userId: number, skill: { name: string; progress: number; level: number }): Promise<Skill> {
     const id = this.currentSkillId++;
     const newSkill: Skill = { id, userId, ...skill };
     this.skills.set(id, newSkill);
     return newSkill;
   }
 
-  async updateSkill(skillId: number, progress: number): Promise<Skill> {
+  async updateSkillProgress(skillId: number, taskCompleted: boolean): Promise<Skill> {
     const skill = this.skills.get(skillId);
     if (!skill) throw new Error("Skill not found");
-    const updatedSkill = { ...skill, progress };
+
+    // Update progress based on task completion
+    let newProgress = skill.progress + (taskCompleted ? 10 : -10);
+
+    // Keep progress within 0-100 range
+    newProgress = Math.max(0, Math.min(100, newProgress));
+
+    // Level up if progress reaches 100
+    let newLevel = skill.level;
+    if (newProgress >= 100) {
+      newLevel++;
+      newProgress = 0;
+    }
+
+    const updatedSkill = { ...skill, progress: newProgress, level: newLevel };
     this.skills.set(skillId, updatedSkill);
     return updatedSkill;
   }

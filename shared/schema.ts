@@ -12,6 +12,7 @@ export const insertUserSchema = z.object({
 export const insertSkillSchema = z.object({
   name: z.string(),
   progress: z.number().min(0).max(100),
+  level: z.number().default(1),
 });
 
 export const insertCareerGoalSchema = z.object({
@@ -30,6 +31,7 @@ export interface Skill {
   userId: number;
   name: string;
   progress: number;
+  level: number;
 }
 
 export interface CareerGoal {
@@ -42,5 +44,21 @@ export interface CareerGoal {
     id: number;
     title: string;
     completed: boolean;
+    relatedSkills?: string[]; // Skills that this task helps improve
+  }>;
+}
+
+export interface Project {
+  id: number;
+  goalId: number;
+  userId: number;
+  title: string;
+  description: string;
+  context: string; // Additional context that can be edited
+  tasks: Array<{
+    id: number;
+    title: string;
+    completed: boolean;
+    skillName: string; // The skill this task helps improve
   }>;
 }

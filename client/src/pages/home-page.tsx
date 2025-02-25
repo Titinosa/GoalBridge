@@ -28,7 +28,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
-  const [newSkill, setNewSkill] = useState({ name: "", progress: 0 });
+  const [newSkill, setNewSkill] = useState({ name: "", progress: 0, level: 1 });
   const [newGoal, setNewGoal] = useState({ title: "", description: "" });
 
   const { data: skills = [] } = useQuery({
@@ -46,7 +46,7 @@ export default function HomePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/skills"] });
-      setNewSkill({ name: "", progress: 0 });
+      setNewSkill({ name: "", progress: 0, level: 1 });
     },
   });
 
@@ -144,13 +144,13 @@ export default function HomePage() {
                     <DialogHeader>
                       <DialogTitle>Add New Skill</DialogTitle>
                       <DialogDescription>
-                        Track a new skill and your progress in it
+                        Track a new skill. Progress increases as you complete related tasks.
                       </DialogDescription>
                     </DialogHeader>
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
-                        addSkillMutation.mutate(newSkill);
+                        addSkillMutation.mutate({ ...newSkill, level: 1, progress: 0 });
                       }}
                       className="space-y-4"
                     >
@@ -161,22 +161,6 @@ export default function HomePage() {
                           value={newSkill.name}
                           onChange={(e) =>
                             setNewSkill({ ...newSkill, name: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="skill-progress">Initial Progress (%)</Label>
-                        <Input
-                          id="skill-progress"
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={newSkill.progress}
-                          onChange={(e) =>
-                            setNewSkill({
-                              ...newSkill,
-                              progress: parseInt(e.target.value),
-                            })
                           }
                         />
                       </div>
@@ -193,7 +177,12 @@ export default function HomePage() {
                   <Card key={skill.id}>
                     <CardContent className="pt-6">
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-medium">{skill.name}</h3>
+                        <div>
+                          <h3 className="font-medium">{skill.name}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Level {skill.level}
+                          </p>
+                        </div>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -202,20 +191,12 @@ export default function HomePage() {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                      <Progress value={skill.progress} className="h-2" />
-                      <Input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={skill.progress}
-                        onChange={(e) =>
-                          updateSkillMutation.mutate({
-                            id: skill.id,
-                            progress: parseInt(e.target.value),
-                          })
-                        }
-                        className="mt-2"
-                      />
+                      <div className="relative">
+                        <Progress value={skill.progress} className="h-2" />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Progress to Level {skill.level + 1}: {skill.progress}%
+                        </p>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
